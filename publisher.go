@@ -213,18 +213,24 @@ func (p *Publisher) Split(ctx context.Context, in <-chan interface{}) error {
 				// TODO: Should this concatenate all the event and error?
 				case Combo:
 					select {
+					case <-p.ctx.Done():
+						return
 					case <-ctx.Done():
 						return
 					case p.errors <- e:
 					}
 				case error:
 					select {
+					case <-p.ctx.Done():
+						return
 					case <-ctx.Done():
 						return
 					case p.errors <- e:
 					}
 				case Event:
 					select {
+					case <-p.ctx.Done():
+						return
 					case <-ctx.Done():
 						return
 					case p.events <- e:
