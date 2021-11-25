@@ -1,4 +1,4 @@
-# event
+# Event is a concurrent Event and Error Stream Implementation for Go
 
 [![Build & Test Action Status](https://github.com/devnw/event/actions/workflows/build.yml/badge.svg)](https://github.com/devnw/event/actions)
 [![Go Report Card](https://goreportcard.com/badge/devnw.com/event)](https://goreportcard.com/report/devnw.com/event)
@@ -7,3 +7,8 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
+To Use:
+
+```bash
+go get -u go.devnw.com/event
+```
