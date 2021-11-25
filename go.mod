@@ -1,3 +1,3 @@
-module devnw.com/event
+module go.devnw.com/event
 
 go 1.17
