@@ -244,8 +244,6 @@ func (p *Publisher) Close() (err error) {
 	defer func() {
 		err = recoverErr(recover())
 	}()
-	defer close(p.events)
-	defer close(p.errors)
 
 	p.cancel()
 	<-p.ctx.Done()
@@ -255,6 +253,16 @@ func (p *Publisher) Close() (err error) {
 
 	p.errorsMu.Lock()
 	defer p.errorsMu.Unlock()
+
+	// Only attempt to close if it's non-nil
+	if p.events != nil {
+		defer close(p.events)
+	}
+
+	// Only attempt to close if it's non-nil
+	if p.errors != nil {
+		defer close(p.errors)
+	}
 
 	p.pubWg.Wait()
 
