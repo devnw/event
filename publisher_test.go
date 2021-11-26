@@ -893,3 +893,101 @@ func Test_Publisher_Split_TypeSwitch(t *testing.T) {
 		t.Fatal("expected test")
 	}
 }
+
+func randData(size int) []interface{} {
+	data := make([]interface{}, size)
+
+	for i := 0; i < size; i++ {
+		v := rand.Int() % 3
+		switch v {
+		case 0:
+			data[i] = &testEvent{"test"}
+		case 1:
+			data[i] = errors.New("test")
+		case 2:
+			data[i] = &testCombo{"test"}
+		}
+	}
+
+	return data
+}
+
+func Test_Publisher_Split_Parallel(t *testing.T) {
+	testdata := map[string]struct {
+		numRoutines int
+		numEvents   int
+	}{
+		"single routine": {1, 100},
+		"two routines":   {2, 50},
+		"ten routines":   {10, 15},
+		"fifty routines": {50, 10},
+	}
+
+	for name, test := range testdata {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			in := make(chan interface{})
+			start := make(chan struct{})
+			defer close(in)
+
+			expected := test.numRoutines * test.numEvents
+
+			for i := 0; i < test.numRoutines; i++ {
+				go func(size int, out chan<- interface{}) {
+					select {
+					case <-ctx.Done():
+						t.Error(ctx.Err())
+						return
+					case <-start:
+					}
+
+					for _, d := range randData(size) {
+						select {
+						case <-ctx.Done():
+							t.Error(ctx.Err())
+							return
+						case out <- d:
+						}
+					}
+				}(test.numEvents, in)
+			}
+
+			publisher := NewPublisher(ctx)
+			defer func() {
+				err := publisher.Close()
+				if err != nil {
+					t.Errorf("Publisher.Close() failed: %v", err)
+				}
+			}()
+
+			events := publisher.ReadEvents(expected)
+			errs := publisher.ReadErrors(expected)
+
+			err := publisher.Split(ctx, in)
+			if err != nil {
+				t.Fatal("expected success")
+			}
+
+			// Start the parallel routines
+			close(start)
+
+			for i := 0; i < expected; i++ {
+				select {
+				case <-ctx.Done():
+					t.Error(ctx.Err())
+					return
+				case event, ok := <-events:
+					if !ok || event == nil {
+						t.Fatal("expected success")
+					}
+				case err, ok := <-errs:
+					if !ok || err == nil {
+						t.Fatal("expected success")
+					}
+				}
+			}
+		})
+	}
+}
