@@ -68,38 +68,46 @@ func (p *Publisher) ReadErrors(buffer int) ErrorStream {
 
 // event is a helper function that indicates
 // if the events channel is nil
-func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) error {
+func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
+	defer func() {
+		err = recoverErr(err, recover())
+	}()
+
 	if p.events == nil {
-		return nil
+		return err
 	}
 
 	select {
 	case <-p.ctx.Done():
-		return p.ctx.Err()
+		err = p.ctx.Err()
 	case <-ctx.Done():
-		return ctx.Err()
+		err = ctx.Err()
 	case p.events <- fn():
 	}
 
-	return nil
+	return err
 }
 
 // e is a helper function that indicates
 // if the events channel is nil
-func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) error {
+func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
+	defer func() {
+		err = recoverErr(err, recover())
+	}()
+
 	if p.errors == nil {
-		return nil
+		return err
 	}
 
 	select {
 	case <-p.ctx.Done():
-		return p.ctx.Err()
+		err = p.ctx.Err()
 	case <-ctx.Done():
-		return ctx.Err()
+		err = ctx.Err()
 	case p.errors <- fn():
 	}
 
-	return nil
+	return err
 }
 
 // Errors accepts a number of error streams and forwards them to the
@@ -248,7 +256,7 @@ func (p *Publisher) Split(ctx context.Context, in <-chan interface{}) error {
 // Close closes the event and error streams
 func (p *Publisher) Close() (err error) {
 	defer func() {
-		err = recoverErr(recover())
+		err = recoverErr(err, recover())
 	}()
 
 	p.cancel()
