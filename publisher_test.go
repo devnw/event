@@ -85,6 +85,8 @@ func Test_Publisher_Read(t *testing.T) {
 			errs := publisher.ReadErrors(len(test.errs))
 
 			in := make(chan interface{})
+			defer close(in)
+
 			publisher.Split(ctx, in)
 			for _, msg := range test.msgs {
 				select {
@@ -157,6 +159,8 @@ func Test_Publisher_Read_Interfaces(t *testing.T) {
 			errs := publisher.ReadErrors(len(test.errs)).Interface()
 
 			in := make(chan interface{})
+			defer close(in)
+
 			publisher.Split(ctx, in)
 			for _, msg := range test.msgs {
 				select {
@@ -390,10 +394,9 @@ type ctxtest struct {
 }
 
 func ctxCancelTests() map[string]ctxtest {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
-	cancelledCtx, cancelledCancel := context.WithCancel(ctx)
+	cancelledCtx, cancelledCancel := context.WithCancel(context.Background())
 	cancelledCancel()
 
 	return map[string]ctxtest{
@@ -594,9 +597,14 @@ func testErrorStreams(
 	ctx context.Context,
 	streamcount int,
 ) (streams []ErrorStream, errs int) {
-	streams = make([]ErrorStream, streamcount)
+	streams = make([]ErrorStream, streamcount+1)
 
 	for i := 0; i < streamcount; i++ {
+		// Make the last one nil
+		if i == streamcount {
+			streams[i] = nil
+		}
+
 		s, size := testErrorStream(ctx)
 		errs += size
 		streams[i] = s
@@ -679,9 +687,14 @@ func testEventStreams(
 	ctx context.Context,
 	streamcount int,
 ) (streams []EventStream, events int) {
-	streams = make([]EventStream, streamcount)
+	streams = make([]EventStream, streamcount+1)
 
 	for i := 0; i < streamcount; i++ {
+		// Make the last one nil
+		if i == streamcount {
+			streams[i] = nil
+		}
+
 		s, size := testEventStream(ctx)
 		events += size
 		streams[i] = s
@@ -778,6 +791,55 @@ func Test_Publisher_Split_NilInput(t *testing.T) {
 	}
 }
 
+func Test_Publisher_Split_NilEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	in := make(chan interface{})
+	defer close(in)
+
+	err := publisher.Split(ctx, in)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func Test_Publisher_Split_NilErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	// Init events to bypass nil check
+	_ = publisher.ReadEvents(0)
+
+	in := make(chan interface{})
+	defer close(in)
+
+	err := publisher.Split(ctx, in)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if err.Error() != "no listener for errors" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // nolint:goconst
 func Test_Publisher_Split_TypeSwitch(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -792,6 +854,7 @@ func Test_Publisher_Split_TypeSwitch(t *testing.T) {
 	}()
 
 	in := make(chan interface{}, 4)
+	defer close(in)
 
 	in <- nil
 	in <- &testEvent{"test"}

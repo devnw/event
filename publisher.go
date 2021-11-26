@@ -247,21 +247,16 @@ func (p *Publisher) Split(ctx context.Context, in <-chan interface{}) error {
 				case nil:
 					continue
 				// TODO: Should this concatenate all the event and error?
-				case Combo:
+				case Combo, error:
+					// Force cast to error
+					err := e.(error)
+
 					select {
 					case <-p.ctx.Done():
 						return
 					case <-ctx.Done():
 						return
-					case p.errors <- e:
-					}
-				case error:
-					select {
-					case <-p.ctx.Done():
-						return
-					case <-ctx.Done():
-						return
-					case p.errors <- e:
+					case p.errors <- err:
 					}
 				case Event:
 					select {
