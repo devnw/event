@@ -73,6 +73,9 @@ func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
 		err = recoverErr(err, recover())
 	}()
 
+	p.eventsMu.Lock()
+	defer p.eventsMu.Unlock()
+
 	if p.events == nil {
 		return err
 	}
@@ -95,6 +98,9 @@ func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
 		err = recoverErr(err, recover())
 	}()
 
+	p.errorsMu.Lock()
+	defer p.errorsMu.Unlock()
+
 	if p.errors == nil {
 		return err
 	}
@@ -113,14 +119,18 @@ func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
 // Errors accepts a number of error streams and forwards them to the
 // publisher. (Fan-In)
 func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
+	p.errorsMu.Lock()
+	defer p.errorsMu.Unlock()
+
 	if p.errors == nil {
 		return errors.New("no listener for errors")
 	}
 
-	p.errorsMu.Lock()
-	defer p.errorsMu.Unlock()
-
 	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+
 		p.pubWg.Add(1)
 
 		go func(err ErrorStream) {
@@ -154,12 +164,12 @@ func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
 // ForwardEvents accepts a number of event streams and forwards them to the
 // event writer.(Fan-In)
 func (p *Publisher) Events(ctx context.Context, events ...EventStream) error {
+	p.eventsMu.RLock()
+	defer p.eventsMu.RUnlock()
+
 	if p.events == nil {
 		return errors.New("no listener for events")
 	}
-
-	p.eventsMu.Lock()
-	defer p.eventsMu.Unlock()
 
 	for _, event := range events {
 		if event == nil {
@@ -206,8 +216,16 @@ func (p *Publisher) Split(ctx context.Context, in <-chan interface{}) error {
 	p.eventsMu.Lock()
 	defer p.eventsMu.Unlock()
 
+	if p.events == nil {
+		return errors.New("no listener for events")
+	}
+
 	p.errorsMu.Lock()
 	defer p.errorsMu.Unlock()
+
+	if p.errors == nil {
+		return errors.New("no listener for errors")
+	}
 
 	p.pubWg.Add(1)
 
