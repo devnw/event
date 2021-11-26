@@ -991,3 +991,84 @@ func Test_Publisher_Split_Parallel(t *testing.T) {
 		})
 	}
 }
+
+func Test_Publisher_ErrorFunc_Parallel(t *testing.T) {
+	testdata := map[string]struct {
+		numRoutines int
+		numEvents   int
+	}{
+		"single routine": {1, 100},
+		"two routines":   {2, 50},
+		"ten routines":   {10, 15},
+		"fifty routines": {50, 10},
+	}
+
+	for name, test := range testdata {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			start := make(chan struct{})
+
+			expected := test.numRoutines * test.numEvents
+
+			publisher := NewPublisher(ctx)
+			defer func() {
+				err := publisher.Close()
+				if err != nil {
+					t.Errorf("Publisher.Close() failed: %v", err)
+				}
+			}()
+
+			events := publisher.ReadEvents(expected)
+			errs := publisher.ReadErrors(expected)
+
+			for i := 0; i < test.numRoutines; i++ {
+				go func(size int) {
+					select {
+					case <-ctx.Done():
+						t.Error(ctx.Err())
+						return
+					case <-start:
+					}
+
+					for _, d := range randData(size) {
+						switch e := d.(type) {
+						case Combo, error:
+							// Force cast to error
+							err := e.(error)
+
+							publisher.ErrorFunc(ctx, ErrorFunc(func() error {
+								return err
+							}))
+						case Event:
+
+							publisher.EventFunc(ctx, EventFunc(func() Event {
+								return e
+							}))
+						}
+					}
+				}(test.numEvents)
+			}
+
+			// Start the parallel routines
+			close(start)
+
+			for i := 0; i < expected; i++ {
+				select {
+				case <-ctx.Done():
+					t.Error(ctx.Err())
+					return
+				case event, ok := <-events:
+					if !ok || event == nil {
+						t.Fatal("expected success")
+					}
+				case err, ok := <-errs:
+					if !ok || err == nil {
+						t.Fatal("expected success")
+					}
+				}
+			}
+		})
+	}
+}
