@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -13,15 +14,12 @@ func (e *testEvent) Event() string {
 	return e.msg
 }
 
-// nolint:unused
 type testCombo struct{ msg string }
 
-// nolint:unused
-func (c *testCombo) Error() error {
-	return errors.New(c.msg)
+func (c *testCombo) Error() string {
+	return c.msg
 }
 
-// nolint:unused
 func (c *testCombo) Event() string {
 	return c.msg
 }
@@ -589,5 +587,246 @@ func Test_Publisher_ErrorFunc(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func testErrorStreams(
+	ctx context.Context,
+	streamcount int,
+) (streams []ErrorStream, errs int) {
+	streams = make([]ErrorStream, streamcount)
+
+	for i := 0; i < streamcount; i++ {
+		s, size := testErrorStream(ctx)
+		errs += size
+		streams[i] = s
+	}
+
+	return streams, errs
+}
+
+// nolint:gocritic
+func testErrorStream(ctx context.Context) (ErrorStream, int) {
+	errs := make(chan error)
+	size := rand.Int() % 100
+
+	go func(errs ErrorWriter, size int) {
+		defer close(errs)
+
+		for i := 0; i < size; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			case errs <- errors.New("test"):
+			}
+		}
+	}(errs, size)
+
+	return errs, size
+}
+
+func Test_Publisher_Errors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streams, errcount := testErrorStreams(ctx, 10)
+	if errcount == 0 {
+		t.Fatal("expected error")
+	}
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	errs := publisher.ReadErrors(errcount)
+	publisher.Errors(ctx, streams...)
+
+	for i := 0; i < errcount; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case err, ok := <-errs:
+			if !ok || err == nil {
+				t.Fatal("expected error")
+			}
+		}
+	}
+}
+
+func Test_Publisher_Errors_NilErrors(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	err := publisher.Errors(ctx)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func testEventStreams(
+	ctx context.Context,
+	streamcount int,
+) (streams []EventStream, events int) {
+	streams = make([]EventStream, streamcount)
+
+	for i := 0; i < streamcount; i++ {
+		s, size := testEventStream(ctx)
+		events += size
+		streams[i] = s
+	}
+
+	return streams, events
+}
+
+// nolint:gocritic
+func testEventStream(ctx context.Context) (EventStream, int) {
+	events := make(chan Event)
+	size := rand.Int() % 100
+
+	go func(events EventWriter, size int) {
+		defer close(events)
+
+		for i := 0; i < size; i++ {
+			select {
+			case <-ctx.Done():
+				return
+			case events <- &testEvent{"test"}:
+			}
+		}
+	}(events, size)
+
+	return events, size
+}
+
+func Test_Publisher_Events(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streams, eventcount := testEventStreams(ctx, 10)
+	if eventcount == 0 {
+		t.Fatal("expected events")
+	}
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	events := publisher.ReadEvents(eventcount)
+	publisher.Events(ctx, streams...)
+
+	for i := 0; i < eventcount; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case err, ok := <-events:
+			if !ok || err == nil {
+				t.Fatal("expected error")
+			}
+		}
+	}
+}
+
+func Test_Publisher_Events_NilEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	err := publisher.Events(ctx)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func Test_Publisher_Split_NilInput(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	err := publisher.Split(ctx, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+// nolint:goconst
+func Test_Publisher_Split_TypeSwitch(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	in := make(chan interface{}, 4)
+
+	in <- nil
+	in <- &testEvent{"test"}
+	in <- errors.New("test")
+	in <- &testCombo{"test"}
+
+	events := publisher.ReadEvents(1)
+	errs := publisher.ReadErrors(2)
+
+	err := publisher.Split(ctx, in)
+	if err != nil {
+		t.Fatal("expected success")
+	}
+
+	event, ok := <-events
+	if !ok || event == nil {
+		t.Fatal("expected event")
+	}
+
+	err, ok = <-errs
+	if !ok || err == nil {
+		t.Fatal("expected error")
+	}
+
+	err, ok = <-errs
+	if !ok || err == nil {
+		t.Fatal("expected error")
+	}
+
+	combo, ok := err.(Combo)
+	if !ok {
+		t.Fatal("expected Combo")
+	}
+
+	if combo.Event() != "test" || combo.Error() != "test" {
+		t.Fatal("expected test")
 	}
 }

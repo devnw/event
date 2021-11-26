@@ -112,11 +112,15 @@ func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
 
 // Errors accepts a number of error streams and forwards them to the
 // publisher. (Fan-In)
-func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) {
-	for _, err := range errs {
-		p.errorsMu.Lock()
-		defer p.errorsMu.Unlock()
+func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
+	if p.errors == nil {
+		return errors.New("no listener for errors")
+	}
 
+	p.errorsMu.Lock()
+	defer p.errorsMu.Unlock()
+
+	for _, err := range errs {
 		p.pubWg.Add(1)
 
 		go func(err ErrorStream) {
@@ -143,18 +147,24 @@ func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) {
 			}
 		}(err)
 	}
+
+	return nil
 }
 
 // ForwardEvents accepts a number of event streams and forwards them to the
 // event writer.(Fan-In)
 func (p *Publisher) Events(ctx context.Context, events ...EventStream) error {
+	if p.events == nil {
+		return errors.New("no listener for events")
+	}
+
+	p.eventsMu.Lock()
+	defer p.eventsMu.Unlock()
+
 	for _, event := range events {
 		if event == nil {
 			continue
 		}
-
-		p.eventsMu.Lock()
-		defer p.eventsMu.Unlock()
 
 		p.pubWg.Add(1)
 
