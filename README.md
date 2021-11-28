@@ -12,3 +12,18 @@ To Use:
 ```bash
 go get -u go.devnw.com/event
 ```
+
+Create a Publisher  
+
+```go
+import "go.devnw.com/event"
+...
+
+publisher := NewPublisher(ctx)
+defer func() {
+    err := publisher.Close()
+    if err != nil {
+        t.Errorf("Publisher.Close() failed: %v", err)
+    }
+}()
+```
