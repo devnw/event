@@ -1,8 +1,17 @@
 package event
 
 import (
+	"context"
 	"fmt"
 )
+
+func merge(parent, child context.Context) context.Context {
+	if child == nil {
+		return parent
+	}
+
+	return child
+}
 
 type errWrapper struct {
 	err        string

@@ -408,6 +408,10 @@ func ctxCancelTests() map[string]ctxtest {
 			parent: cancelledCtx,
 			child:  ctx,
 		},
+		"parent cancel, nil child": {
+			parent: cancelledCtx,
+			child:  nil,
+		},
 	}
 }
 
@@ -665,6 +669,40 @@ func Test_Publisher_Errors(t *testing.T) {
 	}
 }
 
+func Test_Publisher_Errors_NilChildCtx(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streams, errcount := testErrorStreams(ctx, 10)
+	if errcount == 0 {
+		t.Fatal("expected error")
+	}
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	errs := publisher.ReadErrors(errcount)
+
+	// nolint: staticcheck
+	publisher.Errors(nil, streams...)
+
+	for i := 0; i < errcount; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case err, ok := <-errs:
+			if !ok || err == nil {
+				t.Fatal("expected error")
+			}
+		}
+	}
+}
+
 func Test_Publisher_Errors_NilErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -742,6 +780,40 @@ func Test_Publisher_Events(t *testing.T) {
 
 	events := publisher.ReadEvents(eventcount)
 	publisher.Events(ctx, streams...)
+
+	for i := 0; i < eventcount; i++ {
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case err, ok := <-events:
+			if !ok || err == nil {
+				t.Fatal("expected error")
+			}
+		}
+	}
+}
+
+func Test_Publisher_Events_NilChildCtx(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	streams, eventcount := testEventStreams(ctx, 10)
+	if eventcount == 0 {
+		t.Fatal("expected events")
+	}
+
+	publisher := NewPublisher(ctx)
+	defer func() {
+		err := publisher.Close()
+		if err != nil {
+			t.Errorf("Publisher.Close() failed: %v", err)
+		}
+	}()
+
+	events := publisher.ReadEvents(eventcount)
+
+	// nolint: staticcheck
+	publisher.Events(nil, streams...)
 
 	for i := 0; i < eventcount; i++ {
 		select {

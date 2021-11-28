@@ -70,6 +70,8 @@ func (p *Publisher) ReadErrors(buffer int) ErrorStream {
 // if there are subscribers to the underlying event channel allowing for delayed
 // data rendering of an event.
 func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
+	ctx = merge(p.ctx, ctx)
+
 	defer func() {
 		err = recoverErr(err, recover())
 	}()
@@ -96,6 +98,8 @@ func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
 // if there are subscribers to the underlying error channel allowing for delayed
 // data rendering of an error.
 func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
+	ctx = merge(p.ctx, ctx)
+
 	defer func() {
 		err = recoverErr(err, recover())
 	}()
@@ -121,6 +125,10 @@ func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
 // Errors accepts a number of error streams and forwards them to the
 // publisher. (Fan-In)
 func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
+	if ctx == nil {
+		ctx = p.ctx
+	}
+
 	p.errorsMu.Lock()
 	defer p.errorsMu.Unlock()
 
@@ -166,6 +174,10 @@ func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
 // Events accepts a number of event streams and forwards them to the
 // event writer.(Fan-In)
 func (p *Publisher) Events(ctx context.Context, events ...EventStream) error {
+	if ctx == nil {
+		ctx = p.ctx
+	}
+
 	p.eventsMu.RLock()
 	defer p.eventsMu.RUnlock()
 
@@ -211,6 +223,10 @@ func (p *Publisher) Events(ctx context.Context, events ...EventStream) error {
 // error streams. (Fan-Out)
 // nolint: gocyclo
 func (p *Publisher) Split(ctx context.Context, in <-chan interface{}) error {
+	if ctx == nil {
+		ctx = p.ctx
+	}
+
 	if in == nil {
 		return errors.New("incoming data channel is nil")
 	}
