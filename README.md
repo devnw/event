@@ -42,12 +42,56 @@ defer func() {
 }()
 ```
 
-### Create An Event Subscriber
+### Create A Handler for both the Error and Event Streams
 
 ```go
-// The caller supplies the buffer to use when reading events
-// this buffer is only applied on the first call as that is
-// what creates the underlying channel in the implementation.
 
-events := publisher.ReadEvents(buffer)
+func main() {
+    ...
+    publisher := NewPublisher(ctx)
+    ...
+
+    // Create a subscriber to read events and errors from the publisher
+    // See `Example **Subscriber**` below for more details on possible
+    // subscriber implementations.
+    Subscribe(
+        ctx,
+
+        // The caller supplies the buffer to use when reading events/errors
+        // this buffer is only applied on the first call as that is
+        // what creates the underlying channel in the implementation.
+        publisher.ReadEvents(buffer).Interface(),
+        publisher.ReadErrors(buffer).Interface(),
+    )
+
+    ...
+}
+```
+
+### Example Subscriber
+
+```go
+// This is an example of a subscriber that will handle both events and errors
+// from the incoming channels. 
+func Subscribe(ctx context.Context, streams ...<-chan interface{}) {
+    for _, stream := range streams {
+        go func(stream <-chan interface{}) {
+            for {
+                case <-ctx.Done():
+                    return
+                case e, ok := <-stream:
+                    if !ok {
+                        return
+                    }
+
+                    switch event := e.(type) {
+                        case error:
+                            // Do something with the error
+                        case Event:
+                            // Do something with the event
+                    }
+            }
+        }(stream)
+    }
+}
 ```
