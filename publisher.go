@@ -163,7 +163,7 @@ func (p *Publisher) Errors(ctx context.Context, errs ...ErrorStream) error {
 	return nil
 }
 
-// ForwardEvents accepts a number of event streams and forwards them to the
+// Events accepts a number of event streams and forwards them to the
 // event writer.(Fan-In)
 func (p *Publisher) Events(ctx context.Context, events ...EventStream) error {
 	p.eventsMu.RLock()
