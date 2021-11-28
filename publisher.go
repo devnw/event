@@ -66,8 +66,9 @@ func (p *Publisher) ReadErrors(buffer int) ErrorStream {
 	return p.errors
 }
 
-// event is a helper function that indicates
-// if the events channel is nil
+// EventFunc Accepts an EventFunc type as a parameter and executes it only
+// if there are subscribers to the underlying event channel allowing for delayed
+// data rendering of an event.
 func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
 	defer func() {
 		err = recoverErr(err, recover())
@@ -91,8 +92,9 @@ func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
 	return err
 }
 
-// e is a helper function that indicates
-// if the events channel is nil
+// ErrorFunc Accepts an ErrorFunc type as a parameter and executes it only
+// if there are subscribers to the underlying error channel allowing for delayed
+// data rendering of an error.
 func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
 	defer func() {
 		err = recoverErr(err, recover())

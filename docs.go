@@ -1,4 +1,4 @@
-// event is a package which provides access to a publisher
+// Package event provides access to a publisher
 // for events and errors which implement the `error` or Event
 // types. This package is intended to be used by highly
 // concurrent implementations which require streams of events
