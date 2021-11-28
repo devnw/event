@@ -358,13 +358,9 @@ func Test_Publisher_EventFunc_NilEventsChan(t *testing.T) {
 		}
 	}()
 
-	err := publisher.EventFunc(ctx, func() Event {
+	publisher.EventFunc(ctx, func() Event {
 		return nil
 	})
-
-	if publisher.events == nil && err != nil {
-		t.Fatal("unexpected error")
-	}
 }
 
 func Test_Publisher_ErrorFunc_NilErrorChan(t *testing.T) {
@@ -379,13 +375,9 @@ func Test_Publisher_ErrorFunc_NilErrorChan(t *testing.T) {
 		}
 	}()
 
-	err := publisher.ErrorFunc(ctx, func() error {
+	publisher.ErrorFunc(ctx, func() error {
 		return nil
 	})
-
-	if publisher.errors == nil && err != nil {
-		t.Fatal("unexpected error")
-	}
 }
 
 type ctxtest struct {
@@ -428,13 +420,9 @@ func Test_ErrorFunc_CtxCancel(t *testing.T) {
 
 			_ = publisher.ReadErrors(0)
 
-			err := publisher.ErrorFunc(test.child, func() error {
+			publisher.ErrorFunc(test.child, func() error {
 				return nil
 			})
-
-			if err == nil {
-				t.Fatal("expected error")
-			}
 		})
 	}
 }
@@ -452,13 +440,9 @@ func Test_EventFunc_CtxCancel(t *testing.T) {
 
 			_ = publisher.ReadEvents(0)
 
-			err := publisher.EventFunc(test.child, func() Event {
+			publisher.EventFunc(test.child, func() Event {
 				return nil
 			})
-
-			if err == nil {
-				t.Fatal("expected error")
-			}
 		})
 	}
 }
@@ -499,15 +483,21 @@ func Test_Publisher_EventFunc(t *testing.T) {
 			}()
 
 			events := publisher.ReadEvents(1)
+			errs := publisher.ReadErrors(1)
 
-			err := publisher.EventFunc(ctx, test.efunc)
+			publisher.EventFunc(ctx, test.efunc)
 
-			if err != nil {
-				if !test.err {
-					t.Fatal("expected error")
+			if test.err {
+				timeout := time.NewTimer(time.Millisecond * 50)
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-errs:
+					return
+				case <-timeout.C:
 				}
 
-				return
+				t.Fatal("expected error")
 			}
 
 			select {
@@ -567,14 +557,19 @@ func Test_Publisher_ErrorFunc(t *testing.T) {
 
 			errs := publisher.ReadErrors(1)
 
-			err := publisher.ErrorFunc(ctx, test.efunc)
+			publisher.ErrorFunc(ctx, test.efunc)
 
-			if err != nil {
-				if !test.err {
-					t.Fatal("expected error")
+			if test.err {
+				timeout := time.NewTimer(time.Millisecond * 50)
+				select {
+				case <-ctx.Done():
+					t.Fatal(ctx.Err())
+				case <-errs:
+					return
+				case <-timeout.C:
 				}
 
-				return
+				t.Fatal("expected error")
 			}
 
 			select {
