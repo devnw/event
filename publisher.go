@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 )
 
 // NewPublisher creates a new publisher for serving Event and Error streams
@@ -69,57 +70,80 @@ func (p *Publisher) ReadErrors(buffer int) ErrorStream {
 // EventFunc Accepts an EventFunc type as a parameter and executes it only
 // if there are subscribers to the underlying event channel allowing for delayed
 // data rendering of an event.
-func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) (err error) {
+func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) {
 	ctx = merge(p.ctx, ctx)
-
-	defer func() {
-		err = recoverErr(err, recover())
-	}()
 
 	p.eventsMu.Lock()
 	defer p.eventsMu.Unlock()
 
+	defer func() {
+		err := recoverErr(nil, recover())
+
+		if p.errors == nil {
+			return
+		}
+
+		if err != nil {
+			// Attempt to publish the panic
+			// nolint:gomnd
+			go func(ctx context.Context, cancel context.CancelFunc) {
+				defer cancel()
+
+				select {
+				case <-p.ctx.Done():
+				case <-ctx.Done():
+				case p.errors <- err:
+				}
+			}(context.WithTimeout(ctx, time.Millisecond*50))
+		}
+	}()
+
 	if p.events == nil {
-		return err
+		return
 	}
 
 	select {
 	case <-p.ctx.Done():
-		err = p.ctx.Err()
 	case <-ctx.Done():
-		err = ctx.Err()
 	case p.events <- fn():
 	}
-
-	return err
 }
 
 // ErrorFunc Accepts an ErrorFunc type as a parameter and executes it only
 // if there are subscribers to the underlying error channel allowing for delayed
 // data rendering of an error.
-func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) (err error) {
+func (p *Publisher) ErrorFunc(ctx context.Context, fn ErrorFunc) {
 	ctx = merge(p.ctx, ctx)
-
-	defer func() {
-		err = recoverErr(err, recover())
-	}()
 
 	p.errorsMu.Lock()
 	defer p.errorsMu.Unlock()
 
 	if p.errors == nil {
-		return err
+		return
 	}
+
+	defer func() {
+		err := recoverErr(nil, recover())
+		if err != nil {
+			// Attempt to publish the panic
+			// nolint:gomnd
+			go func(ctx context.Context, cancel context.CancelFunc) {
+				defer cancel()
+
+				select {
+				case <-p.ctx.Done():
+				case <-ctx.Done():
+				case p.errors <- err:
+				}
+			}(context.WithTimeout(ctx, time.Millisecond*50))
+		}
+	}()
 
 	select {
 	case <-p.ctx.Done():
-		err = p.ctx.Err()
 	case <-ctx.Done():
-		err = ctx.Err()
 	case p.errors <- fn():
 	}
-
-	return err
 }
 
 // Errors accepts a number of error streams and forwards them to the
