@@ -79,11 +79,14 @@ func (p *Publisher) EventFunc(ctx context.Context, fn EventFunc) {
 	defer func() {
 		err := recoverErr(nil, recover())
 
-		if p.errors == nil {
-			return
-		}
-
 		if err != nil {
+			p.errorsMu.Lock()
+			defer p.errorsMu.Unlock()
+
+			if p.errors == nil {
+				return
+			}
+
 			// Attempt to publish the panic
 			// nolint:gomnd
 			go func(ctx context.Context, cancel context.CancelFunc) {
